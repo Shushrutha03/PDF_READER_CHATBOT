@@ -1,160 +1,121 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+!pip install -q langchain==0.0.150 pypdf pandas matplotlib tiktoken textract transformers openai faiss-cpu
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from transformers import GPT2TokenizerFast
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chains.question_answering import load_qa_chain
+from langchain.llms import OpenAI
+from langchain.chains import ConversationalRetrievalChain
+os.environ["OPENAI_API_KEY"] = "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"
+# You MUST add your PDF to local files in this notebook (folder icon on left hand side of screen)
 
-# C extensions
-*.so
+# Simple method - Split by pages
+loader = PyPDFLoader("/content/NEWMARK REPORT-edited.pdf")
+pages = loader.load_and_split()
+print(pages[0])
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# SKIP TO STEP 2 IF YOU'RE USING THIS METHOD
+chunks = pages
+# Advanced method - Split by chunk
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# Step 1: Convert PDF to text
+import textract
+doc = textract.process("/content/NEWMARK REPORT-edited.pdf")
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# Step 2: Save to .txt and reopen (helps prevent issues)
+with open('NEWMARK REPORT-edited.txt', 'w') as f:
+   f.write(doc.decode('utf-8'))
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+with open('NEWMARK REPORT-edited.txt', 'r') as f:
+   text = f.read()
 
-# Translations
-*.mo
-*.pot
+# Step 3: Create function to count tokens
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+def count_tokens(text: str) -> int:
+   return len(tokenizer.encode(text))
 
-# Flask stuff:
-instance/
-.webassets-cache
+# Step 4: Split text into chunks
+text_splitter = RecursiveCharacterTextSplitter(
+   # Set a really small chunk size, just to show.
+   chunk_size = 512,
+   chunk_overlap  = 24,
+   length_function = count_tokens,
+)
 
-# Scrapy stuff:
-.scrapy
+chunks = text_splitter.create_documents([text])
+# Result is many LangChain 'Documents' around 500 tokens or less (Recursive splitter sometimes allows more tokens to retain context)
+type(chunks[0])
+# Quick data visualization to ensure chunking was successful
 
-# Sphinx documentation
-docs/_build/
 
-# PyBuilder
-.pybuilder/
-target/
+# Create a list of token counts
 
-# Jupyter Notebook
-.ipynb_checkpoints
+token_counts = [count_tokens(chunk.page_content) for chunk in chunks]
 
-# IPython
-profile_default/
-ipython_config.py
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+# Create a DataFrame from the token counts
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+df = pd.DataFrame({'Token Count': token_counts})
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/#use-with-ide
-.pdm.toml
+# Create a histogram of the token count distribution
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+df.hist(bins=40, )
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
 
-# SageMath parsed files
-*.sage.py
+# Show the plot
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+plt.show()
+# Get embedding model
+embeddings = OpenAIEmbeddings()
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# Create vector database
+db = FAISS.from_documents(chunks, embeddings)
+# Check similarity search is working
+query = "Who prepared this pdf?"
+docs = db.similarity_search(query)
+docs[0]
+len(docs)
+# Create QA chain to integrate similarity search with user queries (answer query from knowledge base)
 
-# Rope project settings
-.ropeproject
 
-# mkdocs documentation
-/site
+chain = load_qa_chain(OpenAI(temperature=0), chain_type="stuff")
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
 
-# Pyre type checker
-.pyre/
+query = "What is the summary of the story"
+docs = db.similarity_search(query)
 
-# pytype static type analyzer
-.pytype/
 
-# Cython debug symbols
-cython_debug/
+chain.run(input_documents=docs, question=query)
+from IPython.display import display
+import ipywidgets as widgets
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+# Create conversation chain that uses our vectordb as retriver, this also allows for chat history management
+qa = ConversationalRetrievalChain.from_llm(OpenAI(temperature=0.1), db.as_retriever())
+chat_history = []
+
+def on_submit(_):
+   query = input_box.value
+   input_box.value = ""
+
+   if query.lower() == 'exit':
+       print("Thank you for using the State of the Union chatbot!")
+       return
+
+   result = qa({"question": query, "chat_history": chat_history})
+   chat_history.append((query, result['answer']))
+
+   display(widgets.HTML(f'<b>User:</b> {query}'))
+   display(widgets.HTML(f'<b><font color="blue">Chatbot:</font></b> {result["answer"]}'))
+
+print("Welcome to the NEWMARK REPORT-edited  chatbot! Type 'exit' to stop.")
+
+input_box = widgets.Text(placeholder='Please enter your question:')
+input_box.on_submit(on_submit)
+
+display(input_box)
