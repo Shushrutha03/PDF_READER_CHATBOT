@@ -10,7 +10,7 @@ from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms import OpenAI
 from langchain.chains import ConversationalRetrievalChain
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "####" #Give your API token
 # You MUST add your PDF to local files in this notebook (folder icon on left hand side of screen)
 
 # Simple method - Split by pages
